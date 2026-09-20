@@ -7,7 +7,7 @@ import CinematicStage from '@/components/wolves/cinematic/CinematicStage.vue'
 import MediaWidget from '@/components/wolves/cinematic/MediaWidget.vue'
 import Nameplate from '@/components/wolves/cinematic/Nameplate.vue'
 import WolvesIntroOverlay from '@/components/wolves/WolvesIntroOverlay.vue'
-import { parseBackCatalogue } from '@/config/experience-manifest'
+import { loadBackCatalogue } from '@/config/experience-manifest'
 import { buildDirectorsCutVideoSequence, DIRECTORS_CUT_DESTINY_SEGMENT_ID, DIRECTORS_CUT_PROLOGUE_SEGMENT_ID, IKORA_SOURCE_VIDEO_ID } from '@/data/wolves-directors-cut-intro'
 import { buildIntroVideoSequence, guardianIntroStartTime, isTextSegment } from '@/data/wolves-intro-sequence'
 import { INTRO_SEQUENCE_DURATION, useCinematicStore, WOLVES_DIRECTORS_CUT_EXPERIENCE, WOLVES_EXPERIENCE } from '@/stores/cinematic'
@@ -352,11 +352,10 @@ onMounted(async () => {
     return
   }
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}experiences/catalogue.json`)
-    if (!response.ok) {
+    const catalogue = await loadBackCatalogue()
+    if (!catalogue) {
       return
     }
-    const catalogue = parseBackCatalogue(await response.json())
     const manifest = catalogue.experiences.find(experience => experience.id === albumId)
     if (manifest && !unmounted) {
       await launchExperience(manifest)

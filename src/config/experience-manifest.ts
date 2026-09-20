@@ -98,3 +98,32 @@ export function parseBackCatalogue(data: unknown): BackCatalogue {
   }
   return data as BackCatalogue
 }
+
+/**
+ * Single owner of the back-catalogue read path.
+ *
+ * The catalogue URL, the HTTP guard and the parse step belong together: a
+ * caller that resolves the URL itself can drift from the generator's output
+ * location, and a caller that skips `parseBackCatalogue` would hand unvalidated
+ * manifests to the cinematic runtime, defeating the trust boundary documented
+ * above.
+ *
+ * Returns `null` for every unusable outcome — transport failure, non-OK
+ * response, or a catalogue that fails validation — because the catalogue is
+ * additive everywhere it is consumed and each caller falls back to rendering
+ * without it.
+ *
+ * @returns {Promise<BackCatalogue | null>} The validated catalogue, or `null`.
+ */
+export async function loadBackCatalogue(): Promise<BackCatalogue | null> {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}experiences/catalogue.json`)
+    if (!response.ok) {
+      return null
+    }
+    return parseBackCatalogue(await response.json())
+  }
+  catch {
+    return null
+  }
+}
