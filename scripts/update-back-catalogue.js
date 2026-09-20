@@ -314,30 +314,42 @@ export async function refreshMetadata(options = {}) {
     throw new TypeError('Malformed catalogue.json: expected an experiences array')
   }
 
-  // If a restored cache or dirty state lacks albums that exist in git HEAD,
-  // recover them from the repository so a stale cache never causes an ingest failure.
+  // If a restored cache or dirty state lacks albums or committed edits that exist in git HEAD,
+  // recover/prefer them from the repository so a stale cache never causes an ingest failure
+  // or clobbers committed tracklist/segment edits.
   try {
-    const gitOutput = typeof options.gitShow === 'function'
-      ? options.gitShow()
-      : execFileSync('git', ['show', 'HEAD:public/experiences/catalogue.json'], {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        })
+    let gitOutput = null
+    try {
+      gitOutput = typeof options.gitShow === 'function'
+        ? options.gitShow()
+        : execFileSync('git', ['show', 'HEAD:public/experiences/catalogue.json'], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+          })
+    }
+    catch {
+      // Non-git environment or git show failed; rely on disk.
+    }
     if (gitOutput) {
       const gitCatalogue = JSON.parse(gitOutput)
       if (Array.isArray(gitCatalogue?.experiences)) {
-        const existingIds = new Set(existing.experiences.map(experience => experience.id))
+        const diskIndices = new Map(existing.experiences.map((experience, idx) => [experience.id, idx]))
         for (const exp of gitCatalogue.experiences) {
-          if (!existingIds.has(exp.id)) {
+          if (diskIndices.has(exp.id)) {
+            // Prefer the git HEAD entry so committed edits (segments, tracklist) are preserved
+            const idx = diskIndices.get(exp.id)
+            existing.experiences[idx] = exp
+          }
+          else {
             existing.experiences.push(exp)
-            existingIds.add(exp.id)
+            diskIndices.set(exp.id, existing.experiences.length - 1)
           }
         }
       }
     }
   }
-  catch {
-    // Non-git environment or git show failed; rely on disk.
+  catch (error) {
+    console.warn(`[refreshMetadata] Failed to parse or recover catalogue from git HEAD: ${error?.message || error}`)
   }
 
   const byId = new Map(existing.experiences.map(experience => [experience.id, experience]))

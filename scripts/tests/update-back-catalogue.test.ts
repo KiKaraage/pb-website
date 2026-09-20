@@ -107,6 +107,41 @@ describe('refreshMetadata', () => {
     expect(savedCatalogue.experiences[0].title).toBe('Album 1 New')
   })
 
+  it('prefers git HEAD entries over stale cached disk entries for existing albums', async () => {
+    const onDiskCatalogue = {
+      experiences: [
+        { id: 'PL1', title: 'Album 1 Stale', subtitle: 'Stale Sub', segments: ['old-seg'] },
+      ],
+    }
+    const gitTrackedCatalogue = {
+      experiences: [
+        { id: 'PL1', title: 'Album 1 Committed', subtitle: 'Committed Sub', segments: ['fixed-seg-1', 'fixed-seg-2'] },
+      ],
+    }
+    const upstreamMetadata = [
+      { id: 'PL1', title: 'Album 1 Committed', description: 'Committed Sub' },
+    ]
+    const writtenFiles = new Map<string, string>()
+
+    await refreshMetadata({
+      fetch: async () => ({
+        ok: true,
+        json: async () => upstreamMetadata,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }),
+      readFile: async () => JSON.stringify(onDiskCatalogue),
+      writeFile: async (path: string, content: string | Buffer) => {
+        writtenFiles.set(path, typeof content === 'string' ? content : 'binary')
+      },
+      gitShow: () => JSON.stringify(gitTrackedCatalogue),
+      cataloguePath: '/fake/catalogue.json',
+      experiencesDir: '/fake',
+    })
+
+    const savedCatalogue = JSON.parse(writtenFiles.get('/fake/catalogue.json')!)
+    expect(savedCatalogue.experiences[0].segments).toEqual(['fixed-seg-1', 'fixed-seg-2'])
+  })
+
   it('reports missing albums when absent from both disk and git HEAD', async () => {
     const onDiskCatalogue = { experiences: [] }
     const upstreamMetadata = [
