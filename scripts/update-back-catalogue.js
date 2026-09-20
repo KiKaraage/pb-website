@@ -241,8 +241,8 @@ export function auditExperience(album, entries, experience) {
   }
 }
 
-async function download(url) {
-  const response = await fetch(url)
+export async function download(url, fetchImpl = fetch) {
+  const response = await fetchImpl(url)
   if (!response.ok) {
     throw new Error(`Download failed for ${url}: ${response.status}`)
   }
@@ -296,17 +296,50 @@ export async function main() {
  * caller's failure handler turns that into an issue rather than letting the
  * grid quietly go stale — which is exactly what happened before this existed.
  */
-export async function refreshMetadata() {
-  const albums = await (await fetch(METADATA_URL)).json()
+export async function refreshMetadata(options = {}) {
+  const fetchImpl = options.fetch ?? fetch
+  const readFileImpl = options.readFile ?? readFile
+  const writeFileImpl = options.writeFile ?? writeFile
+  const experiencesDir = options.experiencesDir ?? EXPERIENCES_DIR
+  const cataloguePath = options.cataloguePath ?? join(experiencesDir, 'catalogue.json')
+  const metadataUrl = options.metadataUrl ?? METADATA_URL
+
+  const albums = await (await fetchImpl(metadataUrl)).json()
   if (!Array.isArray(albums)) {
     throw new TypeError('Malformed playlist metadata: expected an array')
   }
 
-  const cataloguePath = join(EXPERIENCES_DIR, 'catalogue.json')
-  const existing = JSON.parse(await readFile(cataloguePath, 'utf8'))
+  const existing = JSON.parse(await readFileImpl(cataloguePath, 'utf8'))
   if (!Array.isArray(existing?.experiences)) {
     throw new TypeError('Malformed catalogue.json: expected an experiences array')
   }
+
+  // If a restored cache or dirty state lacks albums that exist in git HEAD,
+  // recover them from the repository so a stale cache never causes an ingest failure.
+  try {
+    const gitOutput = typeof options.gitShow === 'function'
+      ? options.gitShow()
+      : execFileSync('git', ['show', 'HEAD:public/experiences/catalogue.json'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        })
+    if (gitOutput) {
+      const gitCatalogue = JSON.parse(gitOutput)
+      if (Array.isArray(gitCatalogue?.experiences)) {
+        const existingIds = new Set(existing.experiences.map(experience => experience.id))
+        for (const exp of gitCatalogue.experiences) {
+          if (!existingIds.has(exp.id)) {
+            existing.experiences.push(exp)
+            existingIds.add(exp.id)
+          }
+        }
+      }
+    }
+  }
+  catch {
+    // Non-git environment or git show failed; rely on disk.
+  }
+
   const byId = new Map(existing.experiences.map(experience => [experience.id, experience]))
   const missing = []
   let updated = 0
@@ -326,10 +359,10 @@ export async function refreshMetadata() {
       experience.subtitle = album.description
       updated++
     }
-    await writeFile(join(EXPERIENCES_DIR, `${album.id}.jpg`), await download(COVER_URL(album.id)))
+    await writeFileImpl(join(experiencesDir, `${album.id}.jpg`), await download(COVER_URL(album.id), fetchImpl))
   }
 
-  await writeFile(cataloguePath, `${JSON.stringify(existing, null, 2)}\n`)
+  await writeFileImpl(cataloguePath, `${JSON.stringify(existing, null, 2)}\n`)
   console.info(`Refreshed ${byId.size} album covers; ${updated} prose updates.`)
 
   if (missing.length > 0) {
@@ -337,9 +370,10 @@ export async function refreshMetadata() {
       console.warn(`Album not in the catalogue: ${album.title} (${album.id})`)
     }
     console.warn(`${missing.length} album(s) need a full ingest: run "npm run update:back-catalogue" locally with yt-dlp installed.`)
-    if (process.env.MISSING_ALBUMS_FILE) {
-      await writeFile(
-        process.env.MISSING_ALBUMS_FILE,
+    const missingAlbumsFile = options.missingAlbumsFile ?? process.env.MISSING_ALBUMS_FILE
+    if (missingAlbumsFile) {
+      await writeFileImpl(
+        missingAlbumsFile,
         `${missing.map(album => `${album.title} (${album.id})`).join('\n')}\n`,
       )
     }

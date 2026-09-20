@@ -367,3 +367,18 @@ relative specifier still fails there.
   `missing-sbom` on active/mapped images continues to alert.
 - The generic run-failure issue is deduplicated by exact title too, via
   `syncWorkflowFailureIssue()`.
+
+## Live-data cache parity and catalogue preservation
+
+`actions/cache` derives cache versions from the exact path list, so
+`update-content.yml` (restore and save) and `deploy.yml` (restore) must use
+the identical path list, including `public/experiences`. However, because
+`actions/cache/restore` unpacks the directory, it overwrites the tracked
+`public/experiences/catalogue.json` with the previous run's cached file.
+Tracklists require manual ingestion (`yt-dlp`) and are committed in git. To
+prevent a stale cache from perpetually resurrecting an older catalogue and
+failing `Report albums needing a manual ingest`, `update-content.yml`
+immediately restores the tracked catalogue via
+`git checkout HEAD -- public/experiences/catalogue.json` after cache
+restoration, and `refreshMetadata()` recovers any experiences present in git
+HEAD that are missing from disk.

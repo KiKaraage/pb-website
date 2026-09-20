@@ -1,5 +1,6 @@
+import type { Buffer } from 'node:buffer'
 import { describe, expect, it } from 'vitest'
-import { auditExperience, buildExperience } from '../update-back-catalogue.js'
+import { auditExperience, buildExperience, refreshMetadata } from '../update-back-catalogue.js'
 
 const album = { id: 'PLtest', title: 'Test Album', description: 'A test album' }
 
@@ -61,5 +62,76 @@ describe('auditExperience', () => {
     experience.segments[0].durationSeconds = 0
 
     expect(() => auditExperience(album, entries, experience)).toThrow(/bad duration/)
+  })
+})
+
+describe('refreshMetadata', () => {
+  it('recovers an album from git HEAD when the cached catalogue on disk is missing it', async () => {
+    const onDiskCatalogue = {
+      experiences: [
+        { id: 'PL1', title: 'Album 1', subtitle: 'Old Sub', artwork: 'experiences/PL1.jpg', segments: [] },
+      ],
+    }
+    const gitTrackedCatalogue = {
+      experiences: [
+        { id: 'PL1', title: 'Album 1', subtitle: 'Old Sub', artwork: 'experiences/PL1.jpg', segments: [] },
+        { id: 'PL2', title: 'Album 2', subtitle: 'Sub 2', artwork: 'experiences/PL2.jpg', segments: [] },
+      ],
+    }
+    const upstreamMetadata = [
+      { id: 'PL1', title: 'Album 1 New', description: 'New Sub 1' },
+      { id: 'PL2', title: 'Album 2', description: 'Sub 2' },
+    ]
+
+    const writtenFiles = new Map<string, string>()
+
+    const { missing } = await refreshMetadata({
+      fetch: async () => ({
+        ok: true,
+        json: async () => upstreamMetadata,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }),
+      readFile: async () => JSON.stringify(onDiskCatalogue),
+      writeFile: async (path: string, content: string | Buffer) => {
+        writtenFiles.set(path, typeof content === 'string' ? content : 'binary')
+      },
+      gitShow: () => JSON.stringify(gitTrackedCatalogue),
+      cataloguePath: '/fake/catalogue.json',
+      experiencesDir: '/fake',
+    })
+
+    expect(missing).toHaveLength(0)
+    const savedCatalogue = JSON.parse(writtenFiles.get('/fake/catalogue.json')!)
+    expect(savedCatalogue.experiences).toHaveLength(2)
+    expect(savedCatalogue.experiences.map((e: { id: string }) => e.id)).toEqual(['PL1', 'PL2'])
+    expect(savedCatalogue.experiences[0].title).toBe('Album 1 New')
+  })
+
+  it('reports missing albums when absent from both disk and git HEAD', async () => {
+    const onDiskCatalogue = { experiences: [] }
+    const upstreamMetadata = [
+      { id: 'PL_new', title: 'Unpublished Album', description: 'Desc' },
+    ]
+    const writtenFiles = new Map<string, string>()
+
+    const { missing } = await refreshMetadata({
+      fetch: async () => ({
+        ok: true,
+        json: async () => upstreamMetadata,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }),
+      readFile: async () => JSON.stringify(onDiskCatalogue),
+      writeFile: async (path: string, content: string | Buffer) => {
+        writtenFiles.set(path, typeof content === 'string' ? content : 'binary')
+      },
+      gitShow: () => JSON.stringify({ experiences: [] }),
+      cataloguePath: '/fake/catalogue.json',
+      experiencesDir: '/fake',
+      missingAlbumsFile: '/fake/missing.txt',
+    })
+
+    expect(missing).toHaveLength(1)
+    expect(missing[0].id).toBe('PL_new')
+    expect(writtenFiles.get('/fake/missing.txt')).toContain('Unpublished Album (PL_new)')
   })
 })

@@ -47,6 +47,14 @@ jobs:
             website-live-data-
           fail-on-cache-miss: false
 
+      # The live-data cache restores public/experiences/ from the previous run
+      # to keep cache key parity with the save step, but that directory includes
+      # catalogue.json which is tracked in git. Restoring from cache overwrites
+      # newly committed albums or track edits with the stale cached file.
+      # Restore the tracked catalogue from git before running refresh.
+      - name: Restore tracked catalogue
+        run: git checkout HEAD -- public/experiences/catalogue.json
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
