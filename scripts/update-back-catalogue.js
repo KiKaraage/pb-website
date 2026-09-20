@@ -43,6 +43,14 @@ const MODULE_PATH = import.meta.url.startsWith('file:')
 const ROOT_DIR = MODULE_PATH ? resolve(dirname(MODULE_PATH), '..') : process.cwd()
 const EXPERIENCES_DIR = join(ROOT_DIR, 'public', 'experiences')
 
+/**
+ * True on a CI runner, where the working tree is a clean checkout plus a restored
+ * cache and so can never hold an uncommitted local ingest.
+ */
+function isCi() {
+  return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
+}
+
 function bestThumbnail(entry) {
   if (Array.isArray(entry.thumbnails) && entry.thumbnails.length > 0) {
     const last = entry.thumbnails[entry.thumbnails.length - 1]
@@ -317,6 +325,13 @@ export async function refreshMetadata(options = {}) {
   // If a restored cache or dirty state lacks albums or committed edits that exist in git HEAD,
   // recover/prefer them from the repository so a stale cache never causes an ingest failure
   // or clobbers committed tracklist/segment edits.
+  //
+  // Overwriting an on-disk entry with the git HEAD copy is only safe in CI, where the working
+  // tree is a clean checkout plus a restored cache, so any divergence is stale cache data.
+  // Locally the working tree may hold an uncommitted ingest (a freshly scraped album with new
+  // segments), and clobbering it with HEAD would silently discard that manual scrape. Outside
+  // CI we therefore only add albums missing from disk and never replace existing entries.
+  const preferGitEntries = options.preferGitEntries ?? isCi()
   try {
     let gitOutput = null
     try {
@@ -336,9 +351,12 @@ export async function refreshMetadata(options = {}) {
         const diskIndices = new Map(existing.experiences.map((experience, idx) => [experience.id, idx]))
         for (const exp of gitCatalogue.experiences) {
           if (diskIndices.has(exp.id)) {
-            // Prefer the git HEAD entry so committed edits (segments, tracklist) are preserved
-            const idx = diskIndices.get(exp.id)
-            existing.experiences[idx] = exp
+            // Prefer the git HEAD entry so committed edits (segments, tracklist) are preserved,
+            // but only in CI: locally the on-disk entry may be an uncommitted fresh ingest.
+            if (preferGitEntries) {
+              const idx = diskIndices.get(exp.id)
+              existing.experiences[idx] = exp
+            }
           }
           else {
             existing.experiences.push(exp)

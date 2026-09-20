@@ -98,6 +98,7 @@ describe('refreshMetadata', () => {
       gitShow: () => JSON.stringify(gitTrackedCatalogue),
       cataloguePath: '/fake/catalogue.json',
       experiencesDir: '/fake',
+      preferGitEntries: true,
     })
 
     expect(missing).toHaveLength(0)
@@ -107,7 +108,7 @@ describe('refreshMetadata', () => {
     expect(savedCatalogue.experiences[0].title).toBe('Album 1 New')
   })
 
-  it('prefers git HEAD entries over stale cached disk entries for existing albums', async () => {
+  it('prefers git HEAD entries over stale cached disk entries for existing albums in CI', async () => {
     const onDiskCatalogue = {
       experiences: [
         { id: 'PL1', title: 'Album 1 Stale', subtitle: 'Stale Sub', segments: ['old-seg'] },
@@ -136,10 +137,53 @@ describe('refreshMetadata', () => {
       gitShow: () => JSON.stringify(gitTrackedCatalogue),
       cataloguePath: '/fake/catalogue.json',
       experiencesDir: '/fake',
+      preferGitEntries: true,
     })
 
     const savedCatalogue = JSON.parse(writtenFiles.get('/fake/catalogue.json')!)
     expect(savedCatalogue.experiences[0].segments).toEqual(['fixed-seg-1', 'fixed-seg-2'])
+  })
+
+  it('keeps uncommitted local edits outside CI while still recovering missing albums', async () => {
+    const onDiskCatalogue = {
+      experiences: [
+        { id: 'PL1', title: 'Album 1', subtitle: 'Sub', segments: ['fresh-ingest-1', 'fresh-ingest-2'] },
+      ],
+    }
+    const gitTrackedCatalogue = {
+      experiences: [
+        { id: 'PL1', title: 'Album 1', subtitle: 'Sub', segments: [] },
+        { id: 'PL2', title: 'Album 2', subtitle: 'Sub 2', segments: ['committed-seg'] },
+      ],
+    }
+    const upstreamMetadata = [
+      { id: 'PL1', title: 'Album 1', description: 'Sub' },
+      { id: 'PL2', title: 'Album 2', description: 'Sub 2' },
+    ]
+    const writtenFiles = new Map<string, string>()
+
+    const { missing } = await refreshMetadata({
+      fetch: async () => ({
+        ok: true,
+        json: async () => upstreamMetadata,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }),
+      readFile: async () => JSON.stringify(onDiskCatalogue),
+      writeFile: async (path: string, content: string | Buffer) => {
+        writtenFiles.set(path, typeof content === 'string' ? content : 'binary')
+      },
+      gitShow: () => JSON.stringify(gitTrackedCatalogue),
+      cataloguePath: '/fake/catalogue.json',
+      experiencesDir: '/fake',
+      preferGitEntries: false,
+    })
+
+    expect(missing).toHaveLength(0)
+    const savedCatalogue = JSON.parse(writtenFiles.get('/fake/catalogue.json')!)
+    expect(savedCatalogue.experiences).toHaveLength(2)
+    // The uncommitted local ingest survives; git HEAD's empty segments do not clobber it.
+    expect(savedCatalogue.experiences[0].segments).toEqual(['fresh-ingest-1', 'fresh-ingest-2'])
+    expect(savedCatalogue.experiences[1].id).toBe('PL2')
   })
 
   it('reports missing albums when absent from both disk and git HEAD', async () => {
