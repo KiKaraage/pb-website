@@ -187,12 +187,17 @@ export const IMAGE_SBOM_REGISTRY = Object.freeze([
     product: 'dakota',
     required: false,
     // Only the base `dakota` image publishes a `latest` tag; the variants
-    // publish `testing`/`stable`, and this one has no SPDX referrer yet.
-    pendingSbom: true,
+    // publish `testing`/`stable`.
     image: 'ghcr.io/projectbluefin/dakota-nvidia:testing',
     certificateIdentityRegexp: '^https://github.com/projectbluefin/dakota/.github/workflows/[^@]+@refs/.+$',
     certificateOidcIssuer: 'https://token.actions.githubusercontent.com',
     packages: {
+      // Mapping reviewed against the published BuildStream SPDX
+      // (sha256:6162d4e8…) for image sha256:a677569e…: `NVIDIA-Linux-x86`
+      // appears exactly once, under `bluefin-nvidia/nvidia-drivers.bst`. The
+      // neighbouring `nvidia-drivers`, `nvidia-container-toolkit`, and
+      // `nvidia-vaapi-driver` packages carry different names, so no element
+      // pin is needed to disambiguate.
       nvidia: { name: 'NVIDIA-Linux-x86', required: true },
     },
   }),

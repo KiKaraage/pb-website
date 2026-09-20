@@ -245,6 +245,67 @@ atomic multi-output promotion.
 
 
 
+## Clearing `pendingSbom` (resolving a `pending-mapping` issue)
+
+`pending-mapping` is the only audit code whose fix is a registry edit rather
+than a code fix. It means the publisher started attaching an SPDX referrer and
+a human still has to confirm which SPDX package names carry the fields we
+publish. Do not clear the flag on the strength of the issue body alone — the
+body proves an SBOM exists, not that the mapping resolves.
+
+Review it against the real document. `oras` and `cosign` are usually absent
+from an agent sandbox, but the issue body carries the SBOM digest and GHCR
+serves it to an anonymous token, so the SPDX is directly fetchable:
+
+```bash
+TOKEN=$(curl -sS "https://ghcr.io/token?scope=repository:<owner>/<repo>:pull&service=ghcr.io" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+# The issue's SBOM digest is the referrer MANIFEST; its single layer is the SPDX.
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+  "https://ghcr.io/v2/<owner>/<repo>/manifests/<sbom-digest>"
+curl -sSL -H "Authorization: Bearer $TOKEN" \
+  "https://ghcr.io/v2/<owner>/<repo>/blobs/<layer-digest>" \
+  -o /var/tmp/website-agent/<image>.spdx.json
+```
+
+Confirm the downloaded blob's `sha256sum` matches the layer digest, then run the
+registry's own mapping through `extractMappedVersions` against it and require
+`ambiguous: []` and `missingRequired: []` before editing anything.
+
+Then, in the same commit:
+
+1. Delete `pendingSbom: true` and replace the stale "no SPDX referrer yet"
+   comment with what the review found — the digests, the resolving element, and
+   why no selector was needed (or which one was).
+2. Add a trimmed fixture under `scripts/tests/fixtures/` carrying the resolving
+   package **and its near-miss neighbours** from the real document, and assert
+   the registry mapping resolves against it. A fixture holding only the winning
+   package proves nothing about ambiguity.
+3. Update the registry test that asserted the record was pending. Leaving it is
+   a hard failure, not a warning.
+
+Provenance is already proven when a `pending-mapping` issue exists:
+`verifyRegistry` reaches that branch only after `collectVerifiedImageSbom`
+returned, which runs `cosign verify-attestation` first. Clearing the flag
+therefore cannot surface a hidden `missing-provenance`.
+
+**Pin an element only when the name is actually ambiguous.** The registry's own
+convention: Dakota pins `kernel`, `mesa`, and `systemd` because BuildStream
+reports those names under several elements; `gnome`, `podman`, `pipewire`,
+`flatpak`, and `bootc` stay name-only. A gratuitous pin converts an upstream
+element rename into `missing-required` — a removed version claim and an alert —
+for no disambiguation benefit. Example: `dakota-nvidia` publishes
+`NVIDIA-Linux-x86` exactly once (`bluefin-nvidia/nvidia-drivers.bst`); the
+similarly named `nvidia-drivers`, `nvidia-container-toolkit`,
+`nvidia-vaapi-driver`, and `nvidia-device-nodes` packages are *different names*
+and cannot collide, so that mapping stays name-only.
+
+Note `nvidia-device-nodes` carries a versionInfo of
+`<64 hex>/102`. It is not rejected by the hash guard — the guard only matches a
+bare 40+ hex string — but it fails the accepted-version pattern, so it lands in
+`rejected` rather than `values`. Only a mapping that names it would ever see it.
+
 ## Evidence failure vs tooling failure
 
 `scripts/lib/verified-image-sbom.js` exports two error types and the difference
