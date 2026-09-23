@@ -7,7 +7,7 @@
  */
 import type { ExperienceManifest } from '@/config/experience-manifest'
 import { onMounted, ref } from 'vue'
-import { parseBackCatalogue } from '@/config/experience-manifest'
+import { loadBackCatalogue } from '@/config/experience-manifest'
 
 const emit = defineEmits<{ launch: [manifest: ExperienceManifest] }>()
 
@@ -18,15 +18,10 @@ function resolveArtwork(artwork: string): string {
 }
 
 onMounted(async () => {
-  try {
-    const response = await fetch(`${import.meta.env.BASE_URL}experiences/catalogue.json`)
-    if (!response.ok) {
-      return
-    }
-    experiences.value = parseBackCatalogue(await response.json()).experiences
-  }
-  catch {
-    // The catalogue is additive; the lobby renders without it on failure.
+  // The catalogue is additive; the lobby renders without it on failure.
+  const catalogue = await loadBackCatalogue()
+  if (catalogue) {
+    experiences.value = catalogue.experiences
   }
 })
 </script>

@@ -5,7 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WolvesBackCatalogue from '@/components/wolves/WolvesBackCatalogue.vue'
-import { parseBackCatalogue } from '@/config/experience-manifest'
+import { loadBackCatalogue, parseBackCatalogue } from '@/config/experience-manifest'
 import { resolveOverallRatioTarget, useCinematicStore, WOLVES_EXPERIENCE } from '@/stores/cinematic'
 // @ts-expect-error script module is intentionally plain Node ESM
 import * as catalogueGenerator from '../../scripts/update-back-catalogue.js'
@@ -80,6 +80,44 @@ describe('back catalogue experiences', () => {
     expect(() => parseBackCatalogue({})).toThrow('experiences array')
     expect(() => parseBackCatalogue({ experiences: [{ id: 'x' }] })).toThrow('bad experience entry')
     expect(parseBackCatalogue({ experiences: [ALBUM] }).experiences).toHaveLength(1)
+  })
+
+  // `loadBackCatalogue` is the single owner of the read path. Two call sites
+  // (`WolvesApp` deep links, `WolvesBackCatalogue` grid) depend on it
+  // resolving the generator's URL and refusing anything that does not parse,
+  // so the runtime can never be handed an unvalidated manifest.
+  it('loads the catalogue from the generated URL and validates it', async () => {
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => ({ experiences: [ALBUM] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const catalogue = await loadBackCatalogue()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toContain('experiences/catalogue.json')
+    expect(catalogue?.experiences).toHaveLength(1)
+  })
+
+  it('returns null for every unusable catalogue outcome', async () => {
+    // Non-OK response: the file is missing or the CDN errored.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) })))
+    expect(await loadBackCatalogue()).toBeNull()
+
+    // Transport failure: offline, DNS, aborted request.
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('network down')
+    }))
+    expect(await loadBackCatalogue()).toBeNull()
+
+    // Structurally malformed body: rejected rather than passed through.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })))
+    expect(await loadBackCatalogue()).toBeNull()
+
+    // Tampered authority: a back-catalogue card claiming the authored show.
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ experiences: [{ ...ALBUM, presentationProfile: 'wolves-directors-cut' }] }),
+    })))
+    expect(await loadBackCatalogue()).toBeNull()
   })
 
   // `presentationProfile` is authority, not structure: it selects the authored
