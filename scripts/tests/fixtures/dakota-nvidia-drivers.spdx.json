@@ -1,0 +1,84 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "dakota-nvidia",
+  "documentNamespace": "https://projectbluefin.io/spdx/dakota-nvidia",
+  "creationInfo": {
+    "creators": ["Tool: buildstream-sbom", "Organization: projectbluefin"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-bluefin-nvidia-nvidia-drivers.bst",
+      "name": "nvidia-drivers",
+      "filesAnalyzed": false,
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "bst-element",
+          "referenceLocator": "bluefin-nvidia/nvidia-drivers.bst"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-bluefin-nvidia-nvidia-drivers.bst-0",
+      "name": "NVIDIA-Linux-x86",
+      "versionInfo": "615.71.09",
+      "filesAnalyzed": false,
+      "downloadLocation": "https://us.download.nvidia.com/XFree86/Linux-x86_64/615.71.09/NVIDIA-Linux-x86_64-615.71.09.run",
+      "sourceInfo": "remote",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "bst-element",
+          "referenceLocator": "bluefin-nvidia/nvidia-drivers.bst"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-bluefin-nvidia-nvidia-container-toolkit.bst-0",
+      "name": "nvidia-container-toolkit",
+      "versionInfo": "1.19.0",
+      "filesAnalyzed": false,
+      "downloadLocation": "https://github.com/NVIDIA/nvidia-container-toolkit.git",
+      "sourceInfo": "git_repo",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "bst-element",
+          "referenceLocator": "bluefin-nvidia/nvidia-container-toolkit.bst"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-bluefin-nvidia-nvidia-vaapi-driver.bst-0",
+      "name": "nvidia-vaapi-driver",
+      "versionInfo": "0.0.17",
+      "filesAnalyzed": false,
+      "downloadLocation": "https://github.com/elFarto/nvidia-vaapi-driver.git",
+      "sourceInfo": "git_repo",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "bst-element",
+          "referenceLocator": "bluefin-nvidia/nvidia-vaapi-driver.bst"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-bluefin-nvidia-nvidia-device-nodes.bst-0",
+      "name": "nvidia-device-nodes",
+      "versionInfo": "8c5cb94a482915d52b4284460ef27d66363c1a1c87979e4342823d385a967187/102",
+      "filesAnalyzed": false,
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "bst-element",
+          "referenceLocator": "bluefin-nvidia/nvidia-device-nodes.bst"
+        }
+      ]
+    }
+  ]
+}

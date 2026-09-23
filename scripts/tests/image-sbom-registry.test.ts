@@ -106,6 +106,9 @@ const dakotaElements = JSON.parse(
 const bluefinCatalogers = JSON.parse(
   readFileSync(join(import.meta.dirname, 'fixtures/bluefin-stable-catalogers.syft.json'), 'utf8'),
 )
+const dakotaNvidiaDrivers = JSON.parse(
+  readFileSync(join(import.meta.dirname, 'fixtures/dakota-nvidia-drivers.spdx.json'), 'utf8'),
+)
 
 function recordFor(id: string) {
   const record = IMAGE_SBOM_REGISTRY.find(r => r.id === id)
@@ -199,13 +202,22 @@ describe('dakota image references name tags the publisher actually publishes', (
     expect(image).toMatch(/:(?:testing|stable)$/)
   })
 
-  it('keeps dakota-nvidia pending until it publishes an SPDX referrer', () => {
+  it('carries a reviewed dakota-nvidia mapping now that the image publishes an SBOM', () => {
     const entry = recordFor('dakota-nvidia')
     expect(entry.image).toBe('ghcr.io/projectbluefin/dakota-nvidia:testing')
-    expect(entry.pendingSbom).toBe(true)
-    // The nvidia mapping stays declared: SectionPicker.vue consumes the key,
-    // and pendingSbom short-circuits before the mapping is resolved.
+    // The mapping was reviewed against the published SPDX, so the record no
+    // longer short-circuits to `pending-mapping`.
+    expect(entry.pendingSbom).toBeUndefined()
     expect(Object.keys(entry.packages)).toEqual(['nvidia'])
+  })
+
+  it('resolves the reviewed dakota-nvidia mapping unambiguously', () => {
+    const { packages } = recordFor('dakota-nvidia')
+    const result = extractMappedVersions(dakotaNvidiaDrivers, packages)
+
+    expect(result.ambiguous).toEqual([])
+    expect(result.missingRequired).toEqual([])
+    expect(result.values.nvidia).toBe('615.71.09')
   })
 
   it('still lets the base dakota image use :latest', () => {
