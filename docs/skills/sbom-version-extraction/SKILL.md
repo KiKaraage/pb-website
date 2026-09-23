@@ -367,3 +367,35 @@ relative specifier still fails there.
   `missing-sbom` on active/mapped images continues to alert.
 - The generic run-failure issue is deduplicated by exact title too, via
   `syncWorkflowFailureIssue()`.
+
+## Live-data cache parity and catalogue preservation
+
+`actions/cache` derives cache versions from the exact path list, so
+`update-content.yml` (restore and save) and `deploy.yml` (restore) must use
+the identical path list, including `public/experiences`. However, because
+`actions/cache/restore` unpacks the directory, it overwrites the tracked
+`public/experiences/catalogue.json` with the previous run's cached file.
+Tracklists require manual ingestion (`yt-dlp`) and are committed in git. To
+prevent a stale cache from perpetually resurrecting an older catalogue and
+failing `Report albums needing a manual ingest`, `update-content.yml`
+immediately restores the tracked catalogue via
+`git checkout HEAD -- public/experiences/catalogue.json` after cache
+restoration, and `refreshMetadata()` recovers any experiences present in git
+HEAD that are missing from disk.
+
+`deploy.yml` restores the same cache path list and therefore has the same
+problem, but currently has **no** `git checkout` counterpart. A deploy that
+lands between a catalogue commit and the next daily `update-content` run will
+still serve the previous run's cached catalogue until that run refreshes the
+cache. This gap is pre-existing; closing it means adding the identical
+`git checkout HEAD -- public/experiences/catalogue.json` step after
+`deploy.yml`'s restore step. Note that `refreshMetadata()` does not run during
+deploy, so the script-side recovery below does not cover this path.
+
+`refreshMetadata()` only *overwrites* an on-disk entry with its git HEAD copy
+when running in CI (`CI`/`GITHUB_ACTIONS`, overridable via the
+`preferGitEntries` option). On a CI runner the working tree is a clean
+checkout plus a restored cache, so any divergence is stale cache data. Locally
+the working tree may hold an uncommitted `yt-dlp` ingest, and overwriting it
+would silently discard that manual scrape — so outside CI the merge only adds
+albums missing from disk and never replaces existing entries.
